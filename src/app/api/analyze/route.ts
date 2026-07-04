@@ -153,8 +153,9 @@ export async function POST(req: NextRequest) {
     const hasPhotos = imageBlocks.length > 0;
 
     const poolSeed = photos.join("").slice(0, 100).split("").reduce((a, c) => a + c.charCodeAt(0), overall);
-    const celebPool = pickCelebPool("unknown", poolSeed);
-    const celebPoolLine = `Celebrity pool (pick ONE from this list only): ${celebPool.join(", ")}`;
+    const malePool   = pickCelebPool("male",   poolSeed);
+    const femalePool = pickCelebPool("female", poolSeed);
+    const celebPoolLine = `Celebrity pool — if the person appears male, pick from: ${malePool.join(", ")}. If female, pick from: ${femalePool.join(", ")}. Pick ONE name only from the correct gender list.`;
 
     let raw = "";
 
