@@ -9,8 +9,36 @@ export interface SmileMetrics {
   facialHarmony: number;
 }
 
-const FALLBACK_MALE   = ["Hrithik Roshan", "Ranveer Singh", "Allu Arjun", "Virat Kohli", "MS Dhoni", "Vijay Deverakonda", "Ranbir Kapoor", "Prabhas"];
-const FALLBACK_FEMALE = ["Deepika Padukone", "Alia Bhatt", "Rashmika Mandanna", "Samantha Ruth Prabhu", "Kareena Kapoor", "Nayanthara", "Pooja Hegde", "Anushka Sharma"];
+const CELEB_POOL_MALE = [
+  "Hrithik Roshan", "Ranveer Singh", "Allu Arjun", "Virat Kohli", "MS Dhoni",
+  "Vijay Deverakonda", "Ranbir Kapoor", "Prabhas", "Ram Charan", "Jr NTR",
+  "Dulquer Salmaan", "Sidharth Malhotra", "Vicky Kaushal", "Kartik Aaryan",
+  "Ayushmann Khurrana", "Rajkummar Rao", "Tovino Thomas", "Fahadh Faasil",
+  "Dhanush", "Sivakarthikeyan", "Nani", "Adivi Sesh", "Vijay Sethupathi",
+  "Rohit Sharma", "Hardik Pandya", "KL Rahul", "AR Rahman",
+];
+
+const CELEB_POOL_FEMALE = [
+  "Alia Bhatt", "Rashmika Mandanna", "Samantha Ruth Prabhu", "Kareena Kapoor",
+  "Nayanthara", "Pooja Hegde", "Anushka Sharma", "Katrina Kaif",
+  "Kiara Advani", "Shraddha Kapoor", "Kriti Sanon", "Taapsee Pannu",
+  "Mrunal Thakur", "Sara Ali Khan", "Janhvi Kapoor", "Sai Pallavi",
+  "Keerthy Suresh", "Trisha Krishnan", "Kajal Aggarwal", "Tamannaah Bhatia",
+  "Nazriya Nazim", "Parvathy Thiruvothu", "Priya Varrier", "Sobhita Dhulipala",
+  "PV Sindhu", "Mirabai Chanu", "Smriti Mandhana",
+];
+
+const FALLBACK_MALE   = CELEB_POOL_MALE.slice(0, 8);
+const FALLBACK_FEMALE = CELEB_POOL_FEMALE.slice(0, 8);
+
+function pickCelebPool(gender: "male" | "female" | "unknown", seed: number): string[] {
+  const pool = gender === "female" ? CELEB_POOL_FEMALE
+             : gender === "male"   ? CELEB_POOL_MALE
+             : [...CELEB_POOL_MALE, ...CELEB_POOL_FEMALE];
+  // Seeded shuffle, pick 10
+  const shuffled = [...pool].sort((a, b) => seeded(seed + a.charCodeAt(0), b.charCodeAt(0)) - 0.5);
+  return shuffled.slice(0, 10);
+}
 
 function norm(v: number, min: number, max: number, lo = 55, hi = 95): number {
   return Math.round(lo + (Math.max(min, Math.min(max, v)) - min) / (max - min) * (hi - lo));
@@ -100,6 +128,12 @@ export async function POST(req: NextRequest) {
       ? `\nSupplementary landmark measurements: symmetry ${scores.symmetry}/100, alignment ${scores.alignment}/100, openness ${scores.crowding}/100, width ${scores.spacing}/100, harmony ${scores.harmony}/100.`
       : "";
 
+    // Seed a shuffled celebrity pool from the photo data so every submission gets a different set
+    const poolSeed = photos.join("").slice(0, 100).split("").reduce((a, c) => a + c.charCodeAt(0), overall);
+    // Gender unknown at this point — GPT will tell us; use full pool for now, refine after
+    const tempPool = pickCelebPool("unknown", poolSeed);
+    const celebPoolLine = `Choose from this celebrity pool only: ${tempPool.join(", ")}. Do not pick anyone outside this list.`;
+
     const hasPhotos = imageBlocks.length > 0;
 
     let raw = "";
@@ -142,6 +176,8 @@ Always return valid JSON. Output ONLY valid JSON. No markdown. No explanations. 
               type: "text",
               text: `Analyze the smile in this dental quiz photo.${supplementary}
 
+${celebPoolLine}
+
 Return this exact JSON schema:
 {
   "gender": "male" | "female" | "unknown",
@@ -152,7 +188,7 @@ Return this exact JSON schema:
     "spacing": "...",
     "harmony": "..."
   },
-  "celebrityMatch": "Full name" | "Unknown",
+  "celebrityMatch": "Full name from the pool" | "Unknown",
   "celebrityNote": "one warm sentence about smile style similarity only"
 }`,
             },
