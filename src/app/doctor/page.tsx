@@ -39,6 +39,7 @@ export default function DoctorDashboard() {
   const [selected, setSelected] = useState<Lead | null>(null);
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [lightbox, setLightbox] = useState<string | null>(null);
   const router = useRouter();
 
@@ -63,6 +64,16 @@ export default function DoctorDashboard() {
   }, []);
 
   const openLead = (lead: Lead) => { setSelected(lead); setNotes(lead.doctorNotes ?? ""); };
+
+  const deleteLead = async () => {
+    if (!selected) return;
+    if (!confirm(`Delete ${selected.name}'s submission? This cannot be undone.`)) return;
+    setDeleting(true);
+    await fetch(`/api/doctor/leads/${selected.id}`, { method: "DELETE" });
+    setDeleting(false);
+    setSelected(null);
+    fetchLeads();
+  };
 
   const updateLead = async (status: Status) => {
     if (!selected) return;
@@ -374,6 +385,13 @@ export default function DoctorDashboard() {
                       className="bg-[#f0ece3] rounded-xl py-3 text-sm font-semibold text-[#3d3831] hover:bg-[#e8e0d4] transition-colors disabled:opacity-50"
                     >
                       Save Notes
+                    </button>
+                    <button
+                      onClick={deleteLead}
+                      disabled={deleting || saving}
+                      className="rounded-xl py-3 text-sm font-semibold text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50 border border-red-100"
+                    >
+                      {deleting ? "Deleting..." : "Delete Submission"}
                     </button>
                   </div>
                 </div>
