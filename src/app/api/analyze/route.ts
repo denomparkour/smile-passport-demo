@@ -10,22 +10,44 @@ export interface SmileMetrics {
 }
 
 const CELEB_POOL_MALE = [
-  "Hrithik Roshan", "Ranveer Singh", "Allu Arjun", "Virat Kohli", "MS Dhoni",
-  "Vijay Deverakonda", "Ranbir Kapoor", "Prabhas", "Ram Charan", "Jr NTR",
-  "Dulquer Salmaan", "Sidharth Malhotra", "Vicky Kaushal", "Kartik Aaryan",
-  "Ayushmann Khurrana", "Rajkummar Rao", "Tovino Thomas", "Fahadh Faasil",
-  "Dhanush", "Sivakarthikeyan", "Nani", "Adivi Sesh", "Vijay Sethupathi",
-  "Rohit Sharma", "Hardik Pandya", "KL Rahul", "AR Rahman",
+  // Bollywood
+  "Hrithik Roshan", "Ranveer Singh", "Ranbir Kapoor", "Vicky Kaushal",
+  "Kartik Aaryan", "Ayushmann Khurrana", "Rajkummar Rao", "Sidharth Malhotra",
+  "Shahid Kapoor", "Aditya Roy Kapur", "Tiger Shroff", "Arjun Kapoor",
+  // Telugu
+  "Allu Arjun", "Prabhas", "Ram Charan", "Jr NTR", "Vijay Deverakonda",
+  "Nani", "Adivi Sesh", "Akhil Akkineni", "Bellamkonda Srinivas",
+  // Tamil
+  "Dhanush", "Sivakarthikeyan", "Vijay Sethupathi", "Jiiva", "Silambarasan",
+  "Vikram Prabhu", "Atharvaa", "Harish Kalyan",
+  // Malayalam
+  "Dulquer Salmaan", "Tovino Thomas", "Fahadh Faasil", "Nivin Pauly",
+  "Asif Ali", "Shane Nigam",
+  // Kannada
+  "Rakshit Shetty", "Rishab Shetty", "Darshan",
+  // Sports
+  "Virat Kohli", "MS Dhoni", "Rohit Sharma", "Hardik Pandya", "KL Rahul",
+  "Shubman Gill", "Suryakumar Yadav", "Neeraj Chopra",
 ];
 
 const CELEB_POOL_FEMALE = [
-  "Alia Bhatt", "Rashmika Mandanna", "Samantha Ruth Prabhu", "Kareena Kapoor",
-  "Nayanthara", "Pooja Hegde", "Anushka Sharma", "Katrina Kaif",
+  // Bollywood
+  "Alia Bhatt", "Anushka Sharma", "Kareena Kapoor", "Katrina Kaif",
   "Kiara Advani", "Shraddha Kapoor", "Kriti Sanon", "Taapsee Pannu",
-  "Mrunal Thakur", "Sara Ali Khan", "Janhvi Kapoor", "Sai Pallavi",
-  "Keerthy Suresh", "Trisha Krishnan", "Kajal Aggarwal", "Tamannaah Bhatia",
-  "Nazriya Nazim", "Parvathy Thiruvothu", "Priya Varrier", "Sobhita Dhulipala",
-  "PV Sindhu", "Mirabai Chanu", "Smriti Mandhana",
+  "Mrunal Thakur", "Sara Ali Khan", "Janhvi Kapoor", "Bhumi Pednekar",
+  "Sobhita Dhulipala", "Radhika Apte", "Konkona Sen Sharma",
+  // Telugu
+  "Rashmika Mandanna", "Pooja Hegde", "Samantha Ruth Prabhu", "Kajal Aggarwal",
+  "Tamannaah Bhatia", "Sreeleela", "Krithi Shetty", "Anupama Parameswaran",
+  // Tamil
+  "Nayanthara", "Trisha Krishnan", "Keerthy Suresh", "Priya Varrier",
+  "Aishwarya Rajesh", "Aditi Balan", "Ritika Singh",
+  // Malayalam
+  "Nazriya Nazim", "Parvathy Thiruvothu", "Anna Ben", "Darshana Rajendran",
+  // Kannada
+  "Rachita Ram", "Srinidhi Shetty",
+  // Sports & others
+  "PV Sindhu", "Smriti Mandhana", "Mirabai Chanu", "Dipa Karmakar",
 ];
 
 const FALLBACK_MALE   = CELEB_POOL_MALE.slice(0, 8);
@@ -35,9 +57,8 @@ function pickCelebPool(gender: "male" | "female" | "unknown", seed: number): str
   const pool = gender === "female" ? CELEB_POOL_FEMALE
              : gender === "male"   ? CELEB_POOL_MALE
              : [...CELEB_POOL_MALE, ...CELEB_POOL_FEMALE];
-  // Seeded shuffle, pick 10
-  const shuffled = [...pool].sort((a, b) => seeded(seed + a.charCodeAt(0), b.charCodeAt(0)) - 0.5);
-  return shuffled.slice(0, 10);
+  const shuffled = [...pool].sort(() => seeded(seed, pool.length) - 0.5);
+  return shuffled.slice(0, 12);
 }
 
 function norm(v: number, min: number, max: number, lo = 55, hi = 95): number {
@@ -131,6 +152,10 @@ export async function POST(req: NextRequest) {
 
     const hasPhotos = imageBlocks.length > 0;
 
+    const poolSeed = photos.join("").slice(0, 100).split("").reduce((a, c) => a + c.charCodeAt(0), overall);
+    const celebPool = pickCelebPool("unknown", poolSeed);
+    const celebPoolLine = `Celebrity pool (pick ONE from this list only): ${celebPool.join(", ")}`;
+
     let raw = "";
 
     if (hasPhotos) {
@@ -152,12 +177,11 @@ Rules:
 - If a celebrity is requested, interpret it ONLY as a comparison of SMILE STYLE, never facial resemblance or identity.
 
 Celebrity selection rules:
-- Choose the Indian celebrity whose smile characteristics are the closest match.
-- Do not prioritize fame. Consider celebrities from film, television, sports, music, digital creators, and regional cinema equally.
-- Avoid repeatedly selecting the same celebrity when multiple similarly good matches exist.
-- The comparison must be based ONLY on smile characteristics, never overall appearance or identity.
+- You will be given a list of Indian celebrities. Pick the ONE whose smile style best matches the smile you analyzed.
+- Base your choice ONLY on smile characteristics — width, openness, symmetry, corner lift, energy.
+- Do NOT pick based on fame. Pick based on closest smile match.
 - Do NOT imply the person looks like the celebrity.
-- Explain that the similarity is limited to smile expression and smile style.
+- Explain the similarity is limited to smile style only.
 
 If no smile is visible or the teeth cannot be evaluated:
 - Do not invent observations.
@@ -172,6 +196,8 @@ Always return valid JSON. Output ONLY valid JSON. No markdown. No explanations. 
             {
               type: "text",
               text: `Analyze the smile in this dental quiz photo.${supplementary}
+
+${celebPoolLine}
 
 Return this exact JSON schema:
 {
