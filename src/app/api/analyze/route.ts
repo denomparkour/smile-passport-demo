@@ -128,11 +128,6 @@ export async function POST(req: NextRequest) {
       ? `\nSupplementary landmark measurements: symmetry ${scores.symmetry}/100, alignment ${scores.alignment}/100, openness ${scores.crowding}/100, width ${scores.spacing}/100, harmony ${scores.harmony}/100.`
       : "";
 
-    // Seed a shuffled celebrity pool from the photo data so every submission gets a different set
-    const poolSeed = photos.join("").slice(0, 100).split("").reduce((a, c) => a + c.charCodeAt(0), overall);
-    // Gender unknown at this point — GPT will tell us; use full pool for now, refine after
-    const tempPool = pickCelebPool("unknown", poolSeed);
-    const celebPoolLine = `Choose from this celebrity pool only: ${tempPool.join(", ")}. Do not pick anyone outside this list.`;
 
     const hasPhotos = imageBlocks.length > 0;
 
@@ -157,8 +152,10 @@ Rules:
 - If a celebrity is requested, interpret it ONLY as a comparison of SMILE STYLE, never facial resemblance or identity.
 
 Celebrity selection rules:
-- Choose exactly ONE Indian celebrity whose publicly recognizable smile style is similar.
-- The comparison must be based ONLY on smile characteristics.
+- Choose the Indian celebrity whose smile characteristics are the closest match.
+- Do not prioritize fame. Consider celebrities from film, television, sports, music, digital creators, and regional cinema equally.
+- Avoid repeatedly selecting the same celebrity when multiple similarly good matches exist.
+- The comparison must be based ONLY on smile characteristics, never overall appearance or identity.
 - Do NOT imply the person looks like the celebrity.
 - Explain that the similarity is limited to smile expression and smile style.
 
@@ -175,8 +172,6 @@ Always return valid JSON. Output ONLY valid JSON. No markdown. No explanations. 
             {
               type: "text",
               text: `Analyze the smile in this dental quiz photo.${supplementary}
-
-${celebPoolLine}
 
 Return this exact JSON schema:
 {
