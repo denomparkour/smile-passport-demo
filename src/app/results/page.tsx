@@ -20,6 +20,8 @@ interface Analysis {
   };
   celebrityMatch: string;
   celebrityNote: string;
+  celebrityImageUrl: string | null;
+  gender: "male" | "female" | "unknown";
 }
 
 const CATEGORY_LABELS: Record<keyof Analysis["categories"], string> = {
@@ -321,14 +323,33 @@ export default function ResultsPage() {
                       className="rounded-2xl overflow-hidden border border-[#b8923e]/15"
                       style={{ background: "linear-gradient(135deg, #fef9ef, #faf3e0)" }}
                     >
-                      <div className="px-5 py-4">
-                        <p className="text-[10px] tracking-widest uppercase text-[#8c8479] mb-2">Your Smile Resembles</p>
-                        <p className="text-xl font-black shimmer-text" style={{ letterSpacing: "-0.02em" }}>
-                          {analysis.celebrityMatch}
-                        </p>
-                        <p className="text-[#3d3831] text-xs leading-relaxed mt-1.5">{analysis.celebrityNote}</p>
+                      <div className="flex gap-3 px-4 py-4">
+                        {/* Celebrity photo */}
+                        {analysis.celebrityImageUrl ? (
+                          <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0 border border-[#b8923e]/20 shadow-sm">
+                            <img
+                              src={analysis.celebrityImageUrl}
+                              alt={analysis.celebrityMatch}
+                              className="w-full h-full object-cover object-top"
+                            />
+                          </div>
+                        ) : (
+                          <div className="w-16 h-16 rounded-xl bg-[#f5ead6] shrink-0 flex items-center justify-center border border-[#b8923e]/20">
+                            <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+                              <circle cx="11" cy="8" r="4" stroke="#b8923e" strokeWidth="1.4"/>
+                              <path d="M3 20c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke="#b8923e" strokeWidth="1.4" strokeLinecap="round"/>
+                            </svg>
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[10px] tracking-widest uppercase text-[#8c8479] mb-1">Your Smile Resembles</p>
+                          <p className="text-lg font-black shimmer-text leading-tight" style={{ letterSpacing: "-0.02em" }}>
+                            {analysis.celebrityMatch}
+                          </p>
+                          <p className="text-[#3d3831] text-xs leading-relaxed mt-1">{analysis.celebrityNote}</p>
+                        </div>
                       </div>
-                      <div className="px-5 py-2.5 bg-[#b8923e]/08 border-t border-[#b8923e]/10">
+                      <div className="px-4 py-2 bg-[#b8923e]/08 border-t border-[#b8923e]/10">
                         <p className="text-[10px] text-[#8c8479]">
                           ✨ AI-generated comparison based on smile characteristics only
                         </p>

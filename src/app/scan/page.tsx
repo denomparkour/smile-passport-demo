@@ -51,10 +51,11 @@ export default function ScanPage() {
   const canvasRef      = useRef<HTMLCanvasElement>(null);
   const fileRef        = useRef<HTMLInputElement>(null);
   const streamRef      = useRef<MediaStream | null>(null);
-  const animFrameRef   = useRef<number>(0);
-  const smileFramesRef = useRef(0);
-  const capturedRef    = useRef(false);
-  const metricsRef     = useRef<SmileMetrics | null>(null);
+  const animFrameRef      = useRef<number>(0);
+  const smileFramesRef    = useRef(0);
+  const capturedRef       = useRef(false);
+  const metricsRef        = useRef<SmileMetrics | null>(null);
+  const detectionSession  = useRef(0);
 
   const [stepIndex, setStepIndex] = useState(0);
   const [mode, setMode]           = useState<Mode>("camera");
@@ -74,6 +75,7 @@ export default function ScanPage() {
 
   // ── camera helpers ──────────────────────────────────────────────
   const stopCamera = useCallback(() => {
+    detectionSession.current++;          // invalidate any in-flight MediaPipe callbacks
     cancelAnimationFrame(animFrameRef.current);
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
@@ -113,21 +115,27 @@ export default function ScanPage() {
     const video  = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
+    const w = video.videoWidth  || 1280;
+    const h = video.videoHeight || 960;
     cancelAnimationFrame(animFrameRef.current);
-    canvas.width  = video.videoWidth;
-    canvas.height = video.videoHeight;
+    canvas.width  = w;
+    canvas.height = h;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    ctx.translate(canvas.width, 0);
+    ctx.translate(w, 0);
     ctx.scale(-1, 1);
-    ctx.drawImage(video, 0, 0);
-    savePhoto(canvas.toDataURL("image/jpeg", 0.85));
+    ctx.drawImage(video, 0, 0, w, h);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+    if (dataUrl === "data:,") return; // blank canvas guard
+    savePhoto(dataUrl);
   }, [savePhoto]);
 
   const startDetection = useCallback(() => {
+    const sessionId = detectionSession.current; // snapshot — if stopCamera fires, session increments and this becomes stale
     const run = async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const mp = await import("@mediapipe/face_mesh") as any;
+      if (detectionSession.current !== sessionId) return; // camera was stopped while loading
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const faceMesh = new (mp.FaceMesh as any)({
         locateFile: (f: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}`,
@@ -135,6 +143,7 @@ export default function ScanPage() {
       faceMesh.setOptions({ maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7 });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       faceMesh.onResults((results: any) => {
+        if (detectionSession.current !== sessionId) return; // stale session — ignore
         if (!results.multiFaceLandmarks?.length) {
           setFaceDetected(false);
           smileFramesRef.current = Math.max(0, smileFramesRef.current - 2);
@@ -160,9 +169,11 @@ export default function ScanPage() {
         }
       });
       const detect = async () => {
+        if (detectionSession.current !== sessionId) return; // stale — stop loop
         if (videoRef.current && videoRef.current.readyState >= 2) {
           await faceMesh.send({ image: videoRef.current });
         }
+        if (detectionSession.current !== sessionId) return; // check again after async send
         animFrameRef.current = requestAnimationFrame(detect);
       };
       detect();
@@ -184,7 +195,7 @@ export default function ScanPage() {
         video.play();
         setCameraLoading(false);
         setStage("camera");
-        if (step.key === "front") startDetection();
+        startDetection();
       };
     } catch {
       setCameraLoading(false);
@@ -253,9 +264,11 @@ export default function ScanPage() {
       setStepIndex(stepIndex + 1);
       setStage("pick");
     } else {
-      sessionStorage.setItem("sp_photo_front", photos.front ?? "");
-      sessionStorage.setItem("sp_photo_teeth", photos.teeth ?? "");
-      sessionStorage.setItem("sp_photo_side",  photos.side  ?? "");
+      const store = (key: string, val: string | undefined) =>
+        val ? sessionStorage.setItem(key, val) : sessionStorage.removeItem(key);
+      store("sp_photo_front", photos.front);
+      store("sp_photo_teeth", photos.teeth);
+      store("sp_photo_side",  photos.side);
       if (metricsRef.current) {
         sessionStorage.setItem("sp_metrics", JSON.stringify(metricsRef.current));
       } else {

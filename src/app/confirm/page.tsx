@@ -13,6 +13,8 @@ interface Analysis {
 export default function ConfirmPage() {
   const router = useRouter();
   const [photo, setPhoto]           = useState<string | null>(null);
+  const [photoTeeth, setPhotoTeeth] = useState<string | null>(null);
+  const [photoSide, setPhotoSide]   = useState<string | null>(null);
   const [analysis, setAnalysis]     = useState<Analysis | null>(null);
   const [form, setForm]             = useState({ name: "", email: "", phone: "" });
   const [loading, setLoading]       = useState(false);
@@ -24,6 +26,8 @@ export default function ConfirmPage() {
     const a = sessionStorage.getItem("sp_analysis");
     if (!p || !a) { router.replace("/scan"); return; }
     setPhoto(p);
+    setPhotoTeeth(sessionStorage.getItem("sp_photo_teeth"));
+    setPhotoSide(sessionStorage.getItem("sp_photo_side"));
     setAnalysis(JSON.parse(a));
   }, [router]);
 
@@ -41,9 +45,11 @@ export default function ConfirmPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
-          photoBase64: photo,
-          smileScore: analysis?.overallScore ?? null,
-          analysisJson: analysis ?? null,
+          photoBase64:    photo,
+          photoTeeth:     photoTeeth ?? null,
+          photoSide:      photoSide  ?? null,
+          smileScore:     analysis?.overallScore ?? null,
+          analysisJson:   analysis ?? null,
           celebrityMatch: analysis?.celebrityMatch ?? null,
         }),
       });

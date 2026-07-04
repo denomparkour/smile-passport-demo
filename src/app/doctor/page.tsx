@@ -19,6 +19,8 @@ interface Lead {
   reviewedAt: string | null;
   createdAt: string;
   photoBase64: string;
+  photoTeeth: string | null;
+  photoSide: string | null;
 }
 
 const STATUS_CONFIG: Record<Status, { label: string; color: string; bg: string; border: string }> = {
@@ -37,6 +39,7 @@ export default function DoctorDashboard() {
   const [selected, setSelected] = useState<Lead | null>(null);
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const [lightbox, setLightbox] = useState<string | null>(null);
   const router = useRouter();
 
   const fetchLeads = useCallback(async () => {
@@ -52,6 +55,12 @@ export default function DoctorDashboard() {
   }, [page, filter]);
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setLightbox(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const openLead = (lead: Lead) => { setSelected(lead); setNotes(lead.doctorNotes ?? ""); };
 
@@ -72,6 +81,38 @@ export default function DoctorDashboard() {
 
   return (
     <main className="min-h-screen bg-[#faf8f4] text-[#1a1714]">
+
+      {/* Lightbox */}
+      <AnimatePresence>
+        {lightbox && (
+          <motion.div
+            key="lightbox"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4 cursor-zoom-out"
+            onClick={() => setLightbox(null)}
+          >
+            <motion.img
+              src={lightbox}
+              alt="Enlarged photo"
+              initial={{ scale: 0.85, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.85, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 28 }}
+              className="max-h-[90vh] max-w-[90vw] rounded-2xl object-contain shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <button
+              className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-colors text-xl leading-none"
+              onClick={() => setLightbox(null)}
+            >
+              ×
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Header */}
       <header className="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-[#b8923e]/10">
         <div className="max-w-7xl mx-auto px-5 sm:px-8 py-0 h-14 flex items-center justify-between gap-4">
@@ -141,7 +182,8 @@ export default function DoctorDashboard() {
                   <img
                     src={lead.photoBase64}
                     alt={lead.name}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 cursor-zoom-in"
+                    onClick={(e) => { e.stopPropagation(); setLightbox(lead.photoBase64); }}
                   />
                   <div className="absolute inset-0"
                     style={{ background: "linear-gradient(to top, rgba(255,255,255,0.9), transparent)" }} />
@@ -217,14 +259,62 @@ export default function DoctorDashboard() {
               className="bg-white rounded-t-3xl sm:rounded-3xl w-full sm:max-w-2xl max-h-[92vh] overflow-y-auto shadow-2xl"
             >
               <div className="grid md:grid-cols-2">
-                {/* Photo */}
-                <div className="relative h-60 md:h-auto md:min-h-[400px]">
-                  <img src={selected.photoBase64} alt={selected.name} className="w-full h-full object-cover" />
-                  <div className="absolute inset-0"
-                    style={{ background: "linear-gradient(to top, rgba(255,255,255,1) 0%, transparent 50%)" }} />
-                  <div className="absolute bottom-5 left-5">
-                    <p className="text-2xl font-black text-[#1a1714]">{selected.name}</p>
-                    <p className="text-[#b8923e] italic text-sm mt-0.5">&ldquo;{selected.quoteShown}&rdquo;</p>
+                {/* Photos */}
+                <div className="flex flex-col">
+                  {/* Primary photo */}
+                  <div
+                    className="relative h-56 md:flex-1 md:min-h-[260px] cursor-zoom-in"
+                    onClick={() => setLightbox(selected.photoBase64)}
+                  >
+                    <img src={selected.photoBase64} alt={selected.name} className="w-full h-full object-cover object-top" />
+                    <div className="absolute inset-0"
+                      style={{ background: "linear-gradient(to top, rgba(255,255,255,1) 0%, transparent 50%)" }} />
+                    <div className="absolute bottom-3 left-4">
+                      <p className="text-xl font-black text-[#1a1714]">{selected.name}</p>
+                      {selected.quoteShown && (
+                        <p className="text-[#b8923e] italic text-xs mt-0.5">&ldquo;{selected.quoteShown}&rdquo;</p>
+                      )}
+                    </div>
+                    <div className="absolute top-3 left-3 bg-white/80 backdrop-blur rounded-lg px-2 py-0.5 flex items-center gap-1.5">
+                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><circle cx="4" cy="4" r="3" stroke="#8c8479" strokeWidth="1"/><path d="M6.5 6.5l2 2" stroke="#8c8479" strokeWidth="1" strokeLinecap="round"/></svg>
+                      <p className="text-[10px] tracking-widest uppercase text-[#8c8479]">Front Smile</p>
+                    </div>
+                  </div>
+
+                  {/* Teeth + side thumbnails */}
+                  <div className="grid grid-cols-2 gap-0.5">
+                    {selected.photoTeeth ? (
+                      <div
+                        className="relative h-28 bg-[#f0ece3] cursor-zoom-in"
+                        onClick={() => setLightbox(selected.photoTeeth!)}
+                      >
+                        <img src={selected.photoTeeth} alt="Teeth" className="w-full h-full object-cover object-top" />
+                        <div className="absolute bottom-0 inset-x-0 bg-black/30 py-1 text-center">
+                          <p className="text-[10px] tracking-widest uppercase text-white">Teeth</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="h-28 bg-[#f0ece3] flex flex-col items-center justify-center gap-1 opacity-50">
+                        <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="2" y="4" width="14" height="10" rx="2" stroke="#8c8479" strokeWidth="1.2"/><circle cx="9" cy="9" r="2.5" stroke="#8c8479" strokeWidth="1.2"/></svg>
+                        <p className="text-[10px] text-[#8c8479]">No teeth photo</p>
+                      </div>
+                    )}
+                    {selected.photoSide ? (
+                      <div
+                        className="relative h-28 bg-[#f0ece3] cursor-zoom-in"
+                        onClick={() => setLightbox(selected.photoSide!)}
+                      >
+                        <img src={selected.photoSide} alt="Side profile" className="w-full h-full object-cover object-top" />
+                        <div className="absolute bottom-0 inset-x-0 bg-black/30 py-1 text-center">
+                          <p className="text-[10px] tracking-widest uppercase text-white">Side Profile</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="h-28 bg-[#f0ece3] flex flex-col items-center justify-center gap-1 opacity-50">
+                        <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="2" y="4" width="14" height="10" rx="2" stroke="#8c8479" strokeWidth="1.2"/><circle cx="9" cy="9" r="2.5" stroke="#8c8479" strokeWidth="1.2"/></svg>
+                        <p className="text-[10px] text-[#8c8479]">No side photo</p>
+                      </div>
+                    )}
                   </div>
                 </div>
 

@@ -12,6 +12,8 @@ model Lead {
   email       String
   phone       String
   photoBase64    String   @db.Text
+  photoTeeth     String?  @db.Text
+  photoSide      String?  @db.Text
   quoteShown     String   @default("")
   smileScore     Int?
   analysisJson   String?  @db.Text
