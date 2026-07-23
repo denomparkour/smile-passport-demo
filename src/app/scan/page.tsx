@@ -3,40 +3,63 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import type { SmileMetrics } from "@/app/api/analyze/route";
 
 type Mode  = "camera" | "upload";
 type Stage = "pick" | "camera" | "preview";
 
+interface Box { x: number; y: number; width: number; height: number } // normalized 0-1, top-left origin
+
+// Outer lip contour landmark indices (MediaPipe FACEMESH_LIPS)
+const LIP_LANDMARKS = [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146];
+
+const FULL_FRAME_BOX: Box = { x: 0, y: 0, width: 1, height: 1 };
+
+// If the mouth already fills at least this fraction of the frame width, treat it as
+// already close-up and skip zooming. Otherwise crop+zoom so the mouth fills ~1/ZOOM_PADDING.
+const ZOOM_PADDING = 2.4;
+const TARGET_MOUTH_RATIO = 1 / ZOOM_PADDING;
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function extractSmileMetrics(lm: any[]): SmileMetrics {
-  const faceWidth  = Math.abs(lm[454].x - lm[234].x);
-  const faceHeight = Math.abs(lm[10].y  - lm[152].y);
-  const mouthWidth = Math.abs(lm[291].x - lm[61].x);
-  const mouthOpen  = Math.abs(lm[13].y  - lm[14].y);
+function mouthBox(lm: any[]): Box {
+  let minX = 1, maxX = 0, minY = 1, maxY = 0;
+  for (const idx of LIP_LANDMARKS) {
+    const p = lm[idx];
+    if (!p) continue;
+    minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
+    minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
+  }
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
 
-  // Symmetry: compare distances of each corner from horizontal centre
-  const midX        = (lm[61].x + lm[291].x) / 2;
-  const leftDist    = Math.abs(lm[61].x  - midX);
-  const rightDist   = Math.abs(lm[291].x - midX);
-  const symmetry    = Math.max(0, 1 - Math.abs(leftDist - rightDist) / (faceWidth * 0.5));
+function computeCropBox(box: Box, aspect: number): Box {
+  if (box.width >= TARGET_MOUTH_RATIO || box.width <= 0) return FULL_FRAME_BOX;
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  let w = box.width * ZOOM_PADDING;
+  let h = w / aspect;
+  if (h < box.height * ZOOM_PADDING) {
+    h = box.height * ZOOM_PADDING;
+    w = h * aspect;
+  }
+  w = Math.min(w, 1);
+  h = Math.min(h, 1);
+  const x = Math.max(0, Math.min(1 - w, cx - w / 2));
+  const y = Math.max(0, Math.min(1 - h, cy - h / 2));
+  return { x, y, width: w, height: h };
+}
 
-  // Smile curve: how much corners are lifted vs lip centre (positive = upturned)
-  const avgCornerY  = (lm[61].y + lm[291].y) / 2;
-  const curve       = (avgCornerY - lm[13].y) / faceHeight;
-
-  // Facial harmony: how close vertical thirds are to golden proportions
-  const eyeMidY     = (lm[33].y + lm[263].y) / 2;
-  const harmony     = Math.max(0, 1 - Math.abs((eyeMidY - lm[10].y) / faceHeight - 0.38));
-
+// Eases the live crop box toward a new target instead of snapping to it every frame —
+// raw per-frame landmark jitter otherwise makes the zoomed preview visibly vibrate.
+function lerpBox(from: Box, to: Box, t: number): Box {
   return {
-    smileWidthRatio: mouthWidth / faceWidth,
-    mouthOpenness:   mouthOpen  / faceHeight,
-    symmetryScore:   Math.min(1, symmetry),
-    smileCurve:      Math.max(-0.1, Math.min(0.1, -curve)),
-    facialHarmony:   Math.min(1, harmony),
+    x:      from.x      + (to.x      - from.x)      * t,
+    y:      from.y      + (to.y      - from.y)      * t,
+    width:  from.width  + (to.width  - from.width)  * t,
+    height: from.height + (to.height - from.height) * t,
   };
 }
+
+const CROP_SMOOTHING = 0.18; // lower = smoother/slower to follow, higher = snappier/more jitter
 
 const STEPS = [
   { key: "front",  label: "Front Smiling",  hint: "Look straight ahead and give your best smile",  optional: false },
@@ -53,8 +76,8 @@ export default function ScanPage() {
   const streamRef      = useRef<MediaStream | null>(null);
   const animFrameRef      = useRef<number>(0);
   const smileFramesRef    = useRef(0);
+  const teethCropBoxRef   = useRef<Box>(FULL_FRAME_BOX);
   const capturedRef       = useRef(false);
-  const metricsRef        = useRef<SmileMetrics | null>(null);
   const detectionSession  = useRef(0);
 
   const [stepIndex, setStepIndex] = useState(0);
@@ -64,10 +87,13 @@ export default function ScanPage() {
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
   const [gender, setGender]       = useState<"male" | "female" | null>(null);
   const [smileProgress, setSmileProgress] = useState(0);
+  const [teethProgress, setTeethProgress] = useState(0);
+  const [teethZooming, setTeethZooming]   = useState(false);
   const [faceDetected, setFaceDetected]   = useState(false);
   const [error, setError]         = useState<string | null>(null);
   const [cameraLoading, setCameraLoading] = useState(false);
   const [dragOver, setDragOver]   = useState(false);
+  const [processingUpload, setProcessingUpload] = useState(false);
 
   const router = useRouter();
   const step = STEPS[stepIndex];
@@ -81,7 +107,10 @@ export default function ScanPage() {
     streamRef.current = null;
     capturedRef.current = false;
     smileFramesRef.current = 0;
+    teethCropBoxRef.current = FULL_FRAME_BOX;
     setSmileProgress(0);
+    setTeethProgress(0);
+    setTeethZooming(false);
     setFaceDetected(false);
   }, []);
 
@@ -108,6 +137,29 @@ export default function ScanPage() {
     ctx.translate(canvas.width, 0);
     ctx.scale(-1, 1);
     ctx.drawImage(video, 0, 0);
+    savePhoto(canvas.toDataURL("image/jpeg", 0.85));
+  }, [savePhoto]);
+
+  const captureTeeth = useCallback(() => {
+    if (capturedRef.current) return;
+    capturedRef.current = true;
+    cancelAnimationFrame(animFrameRef.current);
+    const video  = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+    const vw = video.videoWidth  || 1280;
+    const vh = video.videoHeight || 960;
+    const box = teethCropBoxRef.current;
+    const sx = box.x * vw, sy = box.y * vh, sw = box.width * vw, sh = box.height * vh;
+    const outW = 900;
+    const outH = Math.round(outW * (sh / sw));
+    canvas.width  = outW;
+    canvas.height = outH;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, outW, outH);
     savePhoto(canvas.toDataURL("image/jpeg", 0.85));
   }, [savePhoto]);
 
@@ -148,23 +200,34 @@ export default function ScanPage() {
           setFaceDetected(false);
           smileFramesRef.current = Math.max(0, smileFramesRef.current - 2);
           setSmileProgress(0);
+          setTeethProgress(0);
           return;
         }
         setFaceDetected(true);
-        // Only auto-capture on step 1 (front smiling) — other steps use manual snap
-        if (step.key === "front") {
-          const lm = results.multiFaceLandmarks[0];
+        const lm = results.multiFaceLandmarks[0];
+
+        if (step.key === "front" || step.key === "teeth") {
           const mouthWidth = Math.abs(lm[291].x - lm[61].x);
           const faceWidth  = Math.abs(lm[454].x - lm[234].x);
           const mouthOpen  = Math.abs(lm[13].y  - lm[14].y);
           const isSmiling  = mouthWidth / faceWidth > 0.42 && mouthOpen > 0.008;
+
+          if (step.key === "teeth") {
+            const video = videoRef.current;
+            const aspect = video && video.videoWidth ? video.videoWidth / video.videoHeight : 4 / 3;
+            const targetBox = computeCropBox(mouthBox(lm), aspect);
+            teethCropBoxRef.current = lerpBox(teethCropBoxRef.current, targetBox, CROP_SMOOTHING);
+            setTeethZooming(targetBox.width < 1);
+          }
+
           if (isSmiling) smileFramesRef.current += 1;
           else smileFramesRef.current = Math.max(0, smileFramesRef.current - 2);
           const progress = Math.min(100, (smileFramesRef.current / SMILE_HOLD_FRAMES) * 100);
           setSmileProgress(progress);
+          setTeethProgress(progress);
           if (smileFramesRef.current >= SMILE_HOLD_FRAMES) {
-            metricsRef.current = extractSmileMetrics(lm);
-            captureSmile();
+            if (step.key === "teeth") captureTeeth();
+            else captureSmile();
           }
         }
       });
@@ -179,7 +242,7 @@ export default function ScanPage() {
       detect();
     };
     run().catch(console.error);
-  }, [step.key, captureSmile]);
+  }, [step.key, captureSmile, captureTeeth]);
 
   const startCamera = useCallback(async () => {
     setError(null);
@@ -203,8 +266,9 @@ export default function ScanPage() {
     }
   }, [step.key, startDetection]);
 
-  // Run MediaPipe on a static image to extract smile metrics (used for uploads)
-  const runMeshOnImage = useCallback(async (dataUrl: string) => {
+  // Detect the mouth in a static uploaded image and crop/zoom to it if the shot
+  // isn't already a close-up (used for the "teeth" step upload path).
+  const cropUploadToMouth = useCallback(async (dataUrl: string): Promise<string> => {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const mp = await import("@mediapipe/face_mesh") as any;
@@ -213,20 +277,38 @@ export default function ScanPage() {
         locateFile: (f: string) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}`,
       });
       mesh.setOptions({ maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
-      await new Promise<void>((resolve) => {
+
+      const img = new Image();
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error("Failed to load image"));
+        img.src = dataUrl;
+      });
+
+      const box = await new Promise<Box | null>((resolve) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         mesh.onResults((results: any) => {
           if (results.multiFaceLandmarks?.length) {
-            metricsRef.current = extractSmileMetrics(results.multiFaceLandmarks[0]);
+            resolve(computeCropBox(mouthBox(results.multiFaceLandmarks[0]), img.width / img.height));
+          } else {
+            resolve(null);
           }
-          resolve();
         });
-        const img = new Image();
-        img.onload = () => mesh.send({ image: img });
-        img.src = dataUrl;
+        mesh.send({ image: img });
       });
+
+      if (!box || box.width >= 1) return dataUrl; // no face found, or already close-up
+
+      const canvas = document.createElement("canvas");
+      const sx = box.x * img.width, sy = box.y * img.height, sw = box.width * img.width, sh = box.height * img.height;
+      canvas.width  = Math.round(sw);
+      canvas.height = Math.round(sh);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return dataUrl;
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+      return canvas.toDataURL("image/jpeg", 0.9);
     } catch {
-      // metrics stay null — fallback scores will be used
+      return dataUrl; // fall back to the original photo if detection fails
     }
   }, []);
 
@@ -235,14 +317,17 @@ export default function ScanPage() {
     if (!file.type.startsWith("image/")) { setError("Please upload an image file."); return; }
     setError(null);
     const reader = new FileReader();
-    reader.onload = (e) => {
-      const dataUrl = e.target?.result as string;
-      // Run mesh in background — metrics will be ready by the time user clicks Analyse
-      if (stepIndex === 0) runMeshOnImage(dataUrl);
+    reader.onload = async (e) => {
+      let dataUrl = e.target?.result as string;
+      if (step.key === "teeth") {
+        setProcessingUpload(true);
+        dataUrl = await cropUploadToMouth(dataUrl);
+        setProcessingUpload(false);
+      }
       savePhoto(dataUrl);
     };
     reader.readAsDataURL(file);
-  }, [savePhoto, runMeshOnImage, stepIndex]);
+  }, [savePhoto, step.key, cropUploadToMouth]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -269,11 +354,6 @@ export default function ScanPage() {
       store("sp_photo_front", photos.front);
       store("sp_photo_teeth", photos.teeth);
       store("sp_photo_side",  photos.side);
-      if (metricsRef.current) {
-        sessionStorage.setItem("sp_metrics", JSON.stringify(metricsRef.current));
-      } else {
-        sessionStorage.removeItem("sp_metrics");
-      }
       router.push("/results");
     }
   };
@@ -426,9 +506,10 @@ export default function ScanPage() {
                     </div>
                   </div>
                   {error && <p className="text-red-500 text-sm bg-red-50 border border-red-200 rounded-xl px-4 py-3 w-full">{error}</p>}
-                  <button onClick={() => fileRef.current?.click()}
-                    className="gold-btn w-full rounded-full py-4 text-sm tracking-widest glow-gold flex items-center justify-center gap-2">
-                    Choose Photo
+                  <button onClick={() => fileRef.current?.click()} disabled={processingUpload}
+                    className="gold-btn w-full rounded-full py-4 text-sm tracking-widest glow-gold flex items-center justify-center gap-2 disabled:opacity-70">
+                    {processingUpload && <Spinner />}
+                    {processingUpload ? "Zooming into your teeth..." : "Choose Photo"}
                   </button>
                 </>
               )}
@@ -463,7 +544,11 @@ export default function ScanPage() {
               className="w-full max-w-sm flex flex-col items-center gap-5"
             >
               <div className="relative w-full aspect-[3/4] rounded-2xl overflow-hidden shadow-xl bg-black">
-                <VideoMirror videoRef={videoRef} />
+                {step.key === "teeth" ? (
+                  <ZoomVideoMirror videoRef={videoRef} cropBoxRef={teethCropBoxRef} />
+                ) : (
+                  <VideoMirror videoRef={videoRef} />
+                )}
 
                 {/* Scan line (step 1 only) */}
                 {step.key === "front" && (
@@ -488,6 +573,15 @@ export default function ScanPage() {
                     {faceDetected ? "Face detected" : "Looking for face..."}
                   </div>
                 </div>
+
+                {/* Zooming badge (teeth step, when not already close-up) */}
+                {step.key === "teeth" && teethZooming && (
+                  <div className="absolute top-3 right-3">
+                    <span className="text-xs font-medium text-white bg-[#b8923e]/90 px-2.5 py-1 rounded-full backdrop-blur">
+                      🔍 Zooming in
+                    </span>
+                  </div>
+                )}
 
                 {/* Step label overlay */}
                 <div className="absolute bottom-3 left-0 right-0 text-center">
@@ -516,9 +610,28 @@ export default function ScanPage() {
                 </div>
               )}
 
-              {/* Steps 2+: manual snap button */}
+              {/* Step 2: same smile detection as step 1, zoomed into the mouth */}
+              {step.key === "teeth" && (
+                <div className="w-full">
+                  <div className="flex justify-between text-xs text-[#8c8479] mb-1.5">
+                    <span>Smile detected</span>
+                    <span>{Math.round(teethProgress)}%</span>
+                  </div>
+                  <div className="h-2 w-full rounded-full bg-[#f0ece3] overflow-hidden">
+                    <motion.div className="h-full rounded-full"
+                      style={{ background: "linear-gradient(90deg, #a07830, #d4a84b)" }}
+                      animate={{ width: `${teethProgress}%` }}
+                      transition={{ duration: 0.1 }} />
+                  </div>
+                  <p className="text-center text-[#8c8479] text-sm mt-2">
+                    {teethProgress > 30 ? "Hold that smile! ✨" : "Smile wide so your teeth are visible"}
+                  </p>
+                </div>
+              )}
+
+              {/* Manual capture button — also usable as an override/fallback */}
               {step.key !== "front" && (
-                <button onClick={snapPhoto}
+                <button onClick={step.key === "teeth" ? captureTeeth : snapPhoto}
                   className="gold-btn w-full rounded-full py-4 text-sm tracking-widest glow-gold flex items-center justify-center gap-2">
                   📸 Take Photo
                 </button>
@@ -631,5 +744,45 @@ function VideoMirror({ videoRef }: { videoRef: React.RefObject<HTMLVideoElement 
     draw();
     return () => cancelAnimationFrame(raf);
   }, [videoRef]);
+  return <canvas ref={canvasRef} className="w-full h-full object-cover" />;
+}
+
+// Mirrors the video like VideoMirror, but continuously renders a digitally
+// zoomed crop (driven by cropBoxRef, updated live from face-landmark detection)
+// instead of the raw full frame — so the on-screen preview zooms in automatically.
+function ZoomVideoMirror({
+  videoRef,
+  cropBoxRef,
+}: {
+  videoRef: React.RefObject<HTMLVideoElement | null>;
+  cropBoxRef: React.RefObject<Box>;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const video  = videoRef.current;
+    if (!canvas || !video) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    let raf: number;
+    const draw = () => {
+      if (video.readyState >= 2) {
+        const vw = video.videoWidth  || 1280;
+        const vh = video.videoHeight || 720;
+        canvas.width  = vw;
+        canvas.height = vh;
+        const box = cropBoxRef.current;
+        const sx = box.x * vw, sy = box.y * vh, sw = box.width * vw, sh = box.height * vh;
+        ctx.save();
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+        ctx.restore();
+      }
+      raf = requestAnimationFrame(draw);
+    };
+    draw();
+    return () => cancelAnimationFrame(raf);
+  }, [videoRef, cropBoxRef]);
   return <canvas ref={canvasRef} className="w-full h-full object-cover" />;
 }

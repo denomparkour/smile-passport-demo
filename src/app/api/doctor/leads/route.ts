@@ -29,7 +29,6 @@ export async function GET(req: NextRequest) {
         photoTeeth:  true,
         photoSide:   true,
         smileScore:  true,
-        celebrityMatch: true,
       },
     }),
     prisma.lead.count({ where }),

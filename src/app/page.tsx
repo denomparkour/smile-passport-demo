@@ -3,36 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { motion } from "framer-motion";
-
-const GALLERY_IMAGES = [
-  "https://images.unsplash.com/photo-1607748862156-7c548e7e98f4?w=500&q=80",
-  "https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=500&q=80",
-  "https://images.unsplash.com/photo-1499952127939-9bbf5af6c51c?w=500&q=80",
-  "https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?w=500&q=80",
-  "https://images.unsplash.com/photo-1492106087820-71f1a00d2b11?w=500&q=80",
-  "https://images.unsplash.com/photo-1526045612212-70caf35c14df?w=500&q=80",
-];
-
-const HOW_STEPS = [
-  {
-    step: "01",
-    title: "Scan your smile",
-    body: "Open your camera, smile naturally — our system captures the perfect moment automatically.",
-    img: "https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=500&q=80",
-  },
-  {
-    step: "02",
-    title: "Expert review",
-    body: "A qualified dentist personally studies your smile and prepares your personalised report.",
-    img: "https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=500&q=80",
-  },
-  {
-    step: "03",
-    title: "Get your report",
-    body: "Receive a detailed PDF smile report within 24 hours — straight to your inbox.",
-    img: "https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?w=500&q=80",
-  },
-];
+import { HERO_IMAGE, HERO_IMAGE_MOBILE, GALLERY_IMAGES, HOW_STEPS } from "@/lib/home-images";
 
 // Fade-up variant — cosmetic only, content visible immediately via whileInView
 const fadeUp = {
@@ -108,9 +79,8 @@ export default function Home() {
 
           <p className="text-[#8c8479] text-base sm:text-lg leading-relaxed max-w-md mb-10">
             Upload a selfie and receive your{" "}
-            <span className="text-[#b8923e] font-semibold">AI Smile Score</span>,
-            a professional orthodontic review, and discover which celebrity
-            your smile most resembles.
+            <span className="text-[#b8923e] font-semibold">AI Smile Score</span>{" "}
+            and a professional orthodontic review.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-3">
@@ -149,7 +119,7 @@ export default function Home() {
         <div className="relative hidden lg:block">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="https://images.unsplash.com/photo-1607748862156-7c548e7e98f4?w=900&q=85"
+            src={HERO_IMAGE}
             alt="Beautiful smile"
             className="absolute inset-0 w-full h-full object-cover object-center"
           />
@@ -179,7 +149,7 @@ export default function Home() {
         <div className="lg:hidden relative h-64 mx-5 mb-10 rounded-3xl overflow-hidden shadow-lg">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="https://images.unsplash.com/photo-1607748862156-7c548e7e98f4?w=800&q=80"
+            src={HERO_IMAGE_MOBILE}
             alt="Beautiful smile"
             className="w-full h-full object-cover object-top"
           />

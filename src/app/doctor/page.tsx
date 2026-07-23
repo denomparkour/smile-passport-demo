@@ -13,7 +13,6 @@ interface Lead {
   phone: string;
   quoteShown: string;
   smileScore: number | null;
-  celebrityMatch: string | null;
   status: Status;
   doctorNotes: string | null;
   reviewedAt: string | null;
@@ -28,6 +27,110 @@ const STATUS_CONFIG: Record<Status, { label: string; color: string; bg: string; 
   REVIEWED: { label: "Reviewed", color: "#065f46", bg: "#d1fae5", border: "#34d399" },
   PDF_SENT: { label: "PDF Sent", color: "#1e3a8a", bg: "#dbeafe", border: "#60a5fa" },
 };
+
+function SmileLoader() {
+  return (
+    <div className="flex flex-col items-center justify-center py-28 gap-5">
+      <motion.svg
+        viewBox="0 0 96 96"
+        width="88"
+        height="88"
+        fill="none"
+        animate={{ y: [0, -8, 0] }}
+        transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+      >
+        <circle cx="48" cy="48" r="44" stroke="#b8923e" strokeOpacity="0.15" strokeWidth="4" />
+        <circle cx="34" cy="40" r="4" fill="#b8923e" />
+        <circle cx="62" cy="40" r="4" fill="#b8923e" />
+        <motion.path
+          d="M28 56c6 10 34 10 40 0"
+          stroke="url(#smileLoaderGradient)"
+          strokeWidth="5"
+          strokeLinecap="round"
+          fill="none"
+          initial={{ pathLength: 0 }}
+          animate={{ pathLength: 1 }}
+          transition={{ duration: 1.1, repeat: Infinity, repeatType: "reverse", ease: "easeInOut" }}
+        />
+        <defs>
+          <linearGradient id="smileLoaderGradient" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#a07830" />
+            <stop offset="100%" stopColor="#d4a84b" />
+          </linearGradient>
+        </defs>
+      </motion.svg>
+      <p className="text-sm font-semibold shimmer-text tracking-wide">Loading smiles…</p>
+      <div className="flex gap-1.5">
+        {[0, 1, 2].map((i) => (
+          <motion.span
+            key={i}
+            className="w-1.5 h-1.5 rounded-full"
+            style={{ background: "#b8923e" }}
+            animate={{ opacity: [0.25, 1, 0.25] }}
+            transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SpinnerImg({
+  src, alt, className, onClick,
+}: {
+  src: string;
+  alt: string;
+  className?: string;
+  onClick?: (e: React.MouseEvent<HTMLImageElement>) => void;
+}) {
+  const [loaded, setLoaded] = useState(false);
+  return (
+    <div className="relative w-full h-full">
+      {!loaded && (
+        <div className="absolute inset-0 flex items-center justify-center bg-[#f0ece3]">
+          <div className="relative w-8 h-8">
+            <div className="absolute inset-0 rounded-full border-[3px] border-[#b8923e]/15" />
+            <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-[#b8923e] animate-spin" />
+          </div>
+        </div>
+      )}
+      <img
+        src={src}
+        alt={alt}
+        className={`${className ?? ""} transition-opacity duration-500 ${loaded ? "opacity-100" : "opacity-0"}`}
+        onLoad={() => setLoaded(true)}
+        onClick={onClick}
+      />
+    </div>
+  );
+}
+
+function LightboxImage({ src, onClick }: { src: string; onClick: (e: React.MouseEvent<HTMLImageElement>) => void }) {
+  const [loaded, setLoaded] = useState(false);
+  return (
+    <div className="relative flex items-center justify-center">
+      {!loaded && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="relative w-12 h-12">
+            <div className="absolute inset-0 rounded-full border-[3px] border-white/15" />
+            <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-white animate-spin" />
+          </div>
+        </div>
+      )}
+      <motion.img
+        src={src}
+        alt="Enlarged photo"
+        initial={{ scale: 0.85, opacity: 0 }}
+        animate={{ scale: 1, opacity: loaded ? 1 : 0 }}
+        exit={{ scale: 0.85, opacity: 0 }}
+        transition={{ type: "spring", stiffness: 300, damping: 28 }}
+        className="max-h-[90vh] max-w-[90vw] rounded-2xl object-contain shadow-2xl"
+        onClick={onClick}
+        onLoad={() => setLoaded(true)}
+      />
+    </div>
+  );
+}
 
 export default function DoctorDashboard() {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -104,16 +207,7 @@ export default function DoctorDashboard() {
             className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4 cursor-zoom-out"
             onClick={() => setLightbox(null)}
           >
-            <motion.img
-              src={lightbox}
-              alt="Enlarged photo"
-              initial={{ scale: 0.85, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.85, opacity: 0 }}
-              transition={{ type: "spring", stiffness: 300, damping: 28 }}
-              className="max-h-[90vh] max-w-[90vw] rounded-2xl object-contain shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            />
+            <LightboxImage src={lightbox} onClick={(e) => e.stopPropagation()} />
             <button
               className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-colors text-xl leading-none"
               onClick={() => setLightbox(null)}
@@ -135,7 +229,19 @@ export default function DoctorDashboard() {
             <span className="text-[#b8923e]/30 shrink-0">|</span>
             <span className="font-black shimmer-text text-base truncate">Doctor CRM</span>
           </div>
-          <span className="text-sm text-[#8c8479] shrink-0">{total} total</span>
+          <div className="flex items-center gap-4 shrink-0">
+            <span className="text-sm text-[#8c8479]">{total} total</span>
+            <button
+              onClick={async () => {
+                await fetch("/api/doctor/logout", { method: "POST" });
+                router.push("/doctor/login");
+                router.refresh();
+              }}
+              className="text-sm text-[#8c8479] hover:text-[#1a1714] transition-colors"
+            >
+              Log out
+            </button>
+          </div>
         </div>
       </header>
 
@@ -163,11 +269,7 @@ export default function DoctorDashboard() {
 
         {/* Grid */}
         {loading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="bg-white rounded-2xl h-64 animate-pulse border border-[#b8923e]/08" />
-            ))}
-          </div>
+          <SmileLoader />
         ) : leads.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-32 text-[#8c8479]">
             <svg width="48" height="48" viewBox="0 0 48 48" fill="none" className="mb-4 opacity-30">
@@ -190,7 +292,7 @@ export default function DoctorDashboard() {
                 className="card rounded-2xl overflow-hidden cursor-pointer hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 group"
               >
                 <div className="relative h-44 overflow-hidden bg-[#f0ece3]">
-                  <img
+                  <SpinnerImg
                     src={lead.photoBase64}
                     alt={lead.name}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 cursor-zoom-in"
@@ -222,9 +324,7 @@ export default function DoctorDashboard() {
                     )}
                   </div>
                   <p className="text-sm text-[#8c8479] truncate">{lead.email}</p>
-                  {lead.celebrityMatch ? (
-                    <p className="text-xs text-[#b8923e] mt-1.5 italic truncate">Resembles {lead.celebrityMatch}</p>
-                  ) : lead.quoteShown ? (
+                  {lead.quoteShown ? (
                     <p className="text-xs text-[#b8923e] mt-1.5 italic truncate">&ldquo;{lead.quoteShown}&rdquo;</p>
                   ) : null}
                   <p className="text-xs text-[#8c8479]/60 mt-2">
@@ -277,7 +377,7 @@ export default function DoctorDashboard() {
                     className="relative h-56 md:flex-1 md:min-h-[260px] cursor-zoom-in"
                     onClick={() => setLightbox(selected.photoBase64)}
                   >
-                    <img src={selected.photoBase64} alt={selected.name} className="w-full h-full object-cover object-top" />
+                    <SpinnerImg src={selected.photoBase64} alt={selected.name} className="w-full h-full object-cover object-top" />
                     <div className="absolute inset-0"
                       style={{ background: "linear-gradient(to top, rgba(255,255,255,1) 0%, transparent 50%)" }} />
                     <div className="absolute bottom-3 left-4">
@@ -299,7 +399,7 @@ export default function DoctorDashboard() {
                         className="relative h-28 bg-[#f0ece3] cursor-zoom-in"
                         onClick={() => setLightbox(selected.photoTeeth!)}
                       >
-                        <img src={selected.photoTeeth} alt="Teeth" className="w-full h-full object-cover object-top" />
+                        <SpinnerImg src={selected.photoTeeth} alt="Teeth" className="w-full h-full object-cover object-top" />
                         <div className="absolute bottom-0 inset-x-0 bg-black/30 py-1 text-center">
                           <p className="text-[10px] tracking-widest uppercase text-white">Teeth</p>
                         </div>
@@ -315,7 +415,7 @@ export default function DoctorDashboard() {
                         className="relative h-28 bg-[#f0ece3] cursor-zoom-in"
                         onClick={() => setLightbox(selected.photoSide!)}
                       >
-                        <img src={selected.photoSide} alt="Side profile" className="w-full h-full object-cover object-top" />
+                        <SpinnerImg src={selected.photoSide} alt="Side profile" className="w-full h-full object-cover object-top" />
                         <div className="absolute bottom-0 inset-x-0 bg-black/30 py-1 text-center">
                           <p className="text-[10px] tracking-widest uppercase text-white">Side Profile</p>
                         </div>
@@ -344,7 +444,6 @@ export default function DoctorDashboard() {
                       { label: "Email",          val: selected.email },
                       { label: "Phone",          val: selected.phone },
                       selected.smileScore != null ? { label: "Smile Score",    val: `${selected.smileScore}/100` } : null,
-                      selected.celebrityMatch    ? { label: "Celebrity Match", val: selected.celebrityMatch }     : null,
                       { label: "Submitted",      val: new Date(selected.createdAt).toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) },
                       { label: "Status",         val: STATUS_CONFIG[selected.status].label },
                     ] as ({ label: string; val: string } | null)[]).filter((x): x is { label: string; val: string } => x !== null).map(({ label, val }) => (

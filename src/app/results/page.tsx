@@ -4,45 +4,62 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 
-interface CategoryScore {
-  score: number;
-  note: string;
+type Severity = "mild" | "moderate" | "severe";
+
+interface SmileIssue {
+  id: string;
+  issue: string;
+  description: string;
+  severity: Severity;
+  confidence: number;
+  affectedArea: string;
+  affectedTeeth: number[];
+  suggestedTreatments: string[];
 }
 
 interface Analysis {
-  overallScore: number;
-  categories: {
-    symmetry:  CategoryScore;
-    alignment: CategoryScore;
-    crowding:  CategoryScore;
-    spacing:   CategoryScore;
-    harmony:   CategoryScore;
-  };
-  celebrityMatch: string;
-  celebrityNote: string;
-  celebrityImageUrl: string | null;
-  gender: "male" | "female" | "unknown";
+  photoType: "intraoral" | "selfie" | "unclear";
+  smileScore: number;
+  overallImpression: string;
+  confidenceLevel: "high" | "medium" | "low";
+  positives: string[];
+  issues: SmileIssue[];
 }
 
-const CATEGORY_LABELS: Record<keyof Analysis["categories"], string> = {
-  symmetry:  "Smile Symmetry",
-  alignment: "Tooth Alignment",
-  crowding:  "Crowding",
-  spacing:   "Spacing",
-  harmony:   "Facial Harmony",
+const LOADING_STEPS = [
+  "Zooming into your smile...",
+  "Scanning teeth alignment & colour...",
+  "Detecting dental issues...",
+  "Compiling your report...",
+];
+
+const TREATMENTS: { key: string; label: string }[] = [
+  { key: "general",   label: "General" },
+  { key: "veneers",   label: "Veneers" },
+  { key: "whitening", label: "Whitening" },
+  { key: "crowns",    label: "Crowns" },
+  { key: "implants",  label: "Implants" },
+  { key: "hollywood", label: "Hollywood" },
+];
+
+const SEVERITY_STYLE: Record<Severity, { bg: string; text: string; label: string }> = {
+  mild:     { bg: "#fef3c7", text: "#92400e", label: "Mild" },
+  moderate: { bg: "#fed7aa", text: "#9a3412", label: "Moderate" },
+  severe:   { bg: "#fecaca", text: "#991b1b", label: "Severe" },
 };
 
-const LOADING_STEPS = [
-  "Detecting facial landmarks...",
-  "Calculating smile metrics...",
-  "Matching celebrity profile...",
-];
+function scoreLabel(score: number): { label: string; colour: string } {
+  if (score >= 85) return { label: "Excellent", colour: "#34d399" };
+  if (score >= 80) return { label: "Good", colour: "#b8923e" };
+  if (score >= 60) return { label: "Fair — Could Improve", colour: "#d4a84b" };
+  return { label: "Needs Attention", colour: "#e8a040" };
+}
 
 function ScoreCircle({ score, size = 140 }: { score: number; size?: number }) {
   const r = (size - 16) / 2;
   const circ = 2 * Math.PI * r;
   const offset = circ - (score / 100) * circ;
-  const colour = score >= 80 ? "#b8923e" : score >= 60 ? "#d4a84b" : "#e8a040";
+  const { colour } = scoreLabel(score);
 
   return (
     <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
@@ -74,29 +91,46 @@ function ScoreCircle({ score, size = 140 }: { score: number; size?: number }) {
   );
 }
 
-function CategoryBar({ label, score, note, delay }: { label: string; score: number; note: string; delay: number }) {
-  const colour = score >= 80 ? "#34d399" : score >= 60 ? "#b8923e" : "#f59e0b";
+function IssueCard({ issue, delay }: { issue: SmileIssue; delay: number }) {
+  const sev = SEVERITY_STYLE[issue.severity];
   return (
     <motion.div
-      initial={{ opacity: 0, x: -12 }}
-      animate={{ opacity: 1, x: 0 }}
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
       transition={{ delay }}
-      className="flex flex-col gap-1"
+      className="rounded-xl border border-[#b8923e]/15 bg-white p-4 flex flex-col gap-2"
     >
-      <div className="flex justify-between items-baseline">
-        <span className="text-xs font-semibold text-[#1a1714]">{label}</span>
-        <span className="text-xs font-bold" style={{ color: colour }}>{score}</span>
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-bold text-[#1a1714] text-sm">{issue.issue}</p>
+        <span
+          className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0"
+          style={{ background: sev.bg, color: sev.text }}
+        >
+          {sev.label}
+        </span>
       </div>
-      <div className="h-1.5 w-full rounded-full bg-[#f0ece3] overflow-hidden">
-        <motion.div
-          className="h-full rounded-full"
-          style={{ backgroundColor: colour }}
-          initial={{ width: 0 }}
-          animate={{ width: `${score}%` }}
-          transition={{ delay: delay + 0.1, duration: 0.8, ease: "easeOut" }}
-        />
-      </div>
-      <p className="text-[11px] text-[#8c8479] leading-snug">{note}</p>
+      <p className="text-[#3d3831] text-xs leading-relaxed">{issue.description}</p>
+      {issue.affectedArea && (
+        <p className="text-[#8c8479] text-[11px]">Affected area: {issue.affectedArea}</p>
+      )}
+      {issue.affectedTeeth.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-0.5">
+          {issue.affectedTeeth.map((t) => (
+            <span key={t} className="text-[10px] font-semibold text-[#8c8479] bg-[#f0ece3] rounded-full px-2 py-0.5">
+              #{t}
+            </span>
+          ))}
+        </div>
+      )}
+      {issue.suggestedTreatments.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-1">
+          {issue.suggestedTreatments.map((t) => (
+            <span key={t} className="text-[10px] font-semibold text-[#b8923e] bg-[#f5ead6] rounded-full px-2 py-0.5">
+              {t}
+            </span>
+          ))}
+        </div>
+      )}
     </motion.div>
   );
 }
@@ -108,37 +142,38 @@ export default function ResultsPage() {
   const [loadStep, setLoadStep]     = useState(0);
   const [error, setError]           = useState<string | null>(null);
 
+  const [selectedTreatment, setSelectedTreatment] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl]     = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError]     = useState<string | null>(null);
+
   useEffect(() => {
     const front = sessionStorage.getItem("sp_photo_front");
     const teeth = sessionStorage.getItem("sp_photo_teeth");
     if (!front) { router.replace("/scan"); return; }
-    setPhoto(front);
+    setPhoto(teeth ?? front);
 
-    // Step through loading labels every ~1.6s
     let step = 0;
     const interval = setInterval(() => {
       step += 1;
       if (step < LOADING_STEPS.length) setLoadStep(step);
-    }, 1600);
+    }, 2200);
 
-    const MIN_DISPLAY_MS = 5000;
+    const MIN_DISPLAY_MS = 6000;
     const start = Date.now();
 
-    const photos  = [front, teeth].filter(Boolean) as string[];
-    const rawMetrics = sessionStorage.getItem("sp_metrics");
-    const metrics = rawMetrics ? JSON.parse(rawMetrics) : null;
+    const photos = [front, teeth].filter(Boolean) as string[];
 
     fetch("/api/analyze", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ photos, metrics }),
+      body: JSON.stringify({ photos }),
     })
       .then((r) => r.json())
       .then((data) => {
         clearInterval(interval);
         if (data.error) throw new Error(data.error);
         setLoadStep(LOADING_STEPS.length);
-        // Enforce minimum display time so it feels like real analysis
         const elapsed = Date.now() - start;
         const wait = Math.max(0, MIN_DISPLAY_MS - elapsed);
         setTimeout(() => setAnalysis(data), wait + 400);
@@ -157,8 +192,27 @@ export default function ResultsPage() {
     router.push("/confirm");
   };
 
-  const scoreLabel = (s: number) =>
-    s >= 85 ? "Excellent" : s >= 70 ? "Great" : s >= 55 ? "Good" : "Needs attention";
+  const pickTreatment = async (key: string) => {
+    if (!photo) return;
+    setSelectedTreatment(key);
+    setPreviewUrl(null);
+    setPreviewError(null);
+    setPreviewLoading(true);
+    try {
+      const res = await fetch("/api/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photo, treatment: key }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error ?? "Preview failed");
+      setPreviewUrl(data.previewUrl);
+    } catch {
+      setPreviewError("Couldn't generate an AI preview right now. Please try another treatment or try again.");
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
 
   return (
     <main className="min-h-screen bg-[#faf8f4] flex flex-col">
@@ -185,7 +239,6 @@ export default function ResultsPage() {
               exit={{ opacity: 0, y: -20 }}
               className="flex flex-col items-center gap-8 text-center max-w-xs w-full"
             >
-              {/* Photo preview */}
               {photo && (
                 <div className="relative w-28 h-28 rounded-2xl overflow-hidden shadow-lg">
                   <img src={photo} alt="Your smile" className="w-full h-full object-cover object-top" />
@@ -193,7 +246,6 @@ export default function ResultsPage() {
                 </div>
               )}
 
-              {/* Spinner ring */}
               <div className="relative w-20 h-20 flex items-center justify-center">
                 <svg className="animate-spin absolute" width="80" height="80" viewBox="0 0 80 80" fill="none">
                   <circle cx="40" cy="40" r="36" stroke="#f0ece3" strokeWidth="4" />
@@ -210,10 +262,9 @@ export default function ResultsPage() {
                 <h2 className="text-xl font-black text-[#1a1714] mb-1" style={{ letterSpacing: "-0.02em" }}>
                   Analysing your smile
                 </h2>
-                <p className="text-[#8c8479] text-sm">Our AI is reviewing your photo</p>
+                <p className="text-[#8c8479] text-sm">Step {Math.min(loadStep + 1, LOADING_STEPS.length)} of {LOADING_STEPS.length} — usually takes under 10 seconds</p>
               </div>
 
-              {/* Steps */}
               <div className="w-full flex flex-col gap-3">
                 {LOADING_STEPS.map((step, i) => (
                   <motion.div
@@ -269,109 +320,121 @@ export default function ResultsPage() {
               initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6 }}
-              className="w-full max-w-2xl"
+              className="w-full max-w-2xl flex flex-col gap-6"
             >
+              {/* Score card */}
               <div className="card rounded-2xl sm:rounded-3xl overflow-hidden">
-                <div className="grid md:grid-cols-2">
+                <div
+                  className="p-6 sm:p-8 flex items-center gap-6"
+                  style={{ background: "linear-gradient(135deg, #1a1714, #2a251f)" }}
+                >
+                  <ScoreCircle score={analysis.smileScore} size={110} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] tracking-widest uppercase text-white/50 mb-1">Smile Report</p>
+                    <p className="text-lg font-black text-white" style={{ letterSpacing: "-0.02em" }}>
+                      {scoreLabel(analysis.smileScore).label}
+                    </p>
+                    <p className="text-white/60 text-xs mt-1">
+                      {analysis.issues.length} area{analysis.issues.length === 1 ? "" : "s"} detected · {analysis.confidenceLevel} confidence
+                    </p>
+                  </div>
+                </div>
 
-                  {/* Left — photo + score */}
-                  <div className="relative">
-                    {photo && (
-                      <div className="relative h-52 md:h-auto md:min-h-[480px]">
-                        <img src={photo} alt="Your smile" className="w-full h-full object-cover object-top" />
-                        <div className="absolute inset-0"
-                          style={{ background: "linear-gradient(to top, rgba(250,248,244,1) 0%, transparent 50%)" }} />
+                <div className="p-6 sm:p-8 flex flex-col gap-6">
+                  <p className="text-[#3d3831] text-sm leading-relaxed">{analysis.overallImpression}</p>
+
+                  {/* What we found */}
+                  <div>
+                    <p className="text-[10px] tracking-widest uppercase text-[#8c8479] mb-3">What We Found</p>
+                    {analysis.positives.length > 0 && (
+                      <div className="flex flex-col gap-2 mb-4">
+                        {analysis.positives.map((p, i) => (
+                          <div key={i} className="flex items-start gap-2">
+                            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="mt-0.5 shrink-0">
+                              <circle cx="7" cy="7" r="6" stroke="#34d399" strokeWidth="1.3"/>
+                              <path d="M4.5 7l1.8 1.8L9.5 5" stroke="#34d399" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                            <p className="text-[#3d3831] text-xs leading-relaxed">{p}</p>
+                          </div>
+                        ))}
                       </div>
                     )}
 
-                    {/* Score overlay */}
-                    <div className="absolute bottom-0 left-0 right-0 p-6 flex flex-col items-center gap-2">
-                      <ScoreCircle score={analysis.overallScore} />
-                      <div className="text-center">
-                        <p className="font-black text-lg text-[#1a1714]" style={{ letterSpacing: "-0.02em" }}>
-                          {scoreLabel(analysis.overallScore)}
-                        </p>
-                        <p className="text-[#8c8479] text-xs">Overall Smile Score</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Right — breakdown + celebrity */}
-                  <div className="p-6 sm:p-8 flex flex-col gap-6">
-
-                    {/* Category breakdown */}
-                    <div>
-                      <p className="text-[10px] tracking-widest uppercase text-[#8c8479] mb-4">Score Breakdown</p>
-                      <div className="flex flex-col gap-4">
-                        {(Object.entries(analysis.categories) as [keyof Analysis["categories"], CategoryScore][]).map(([key, cat], i) => (
-                          <CategoryBar
-                            key={key}
-                            label={CATEGORY_LABELS[key]}
-                            score={cat.score}
-                            note={cat.note}
-                            delay={i * 0.08}
-                          />
+                    {analysis.issues.length > 0 ? (
+                      <div className="flex flex-col gap-3">
+                        {analysis.issues.map((issue, i) => (
+                          <IssueCard key={issue.id} issue={issue} delay={i * 0.08} />
                         ))}
                       </div>
-                    </div>
+                    ) : (
+                      <p className="text-[#8c8479] text-xs italic">No specific issues detected from this photo.</p>
+                    )}
+                  </div>
 
-                    {/* Celebrity match */}
-                    <motion.div
-                      initial={{ opacity: 0, y: 12 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.5 }}
-                      className="rounded-2xl overflow-hidden border border-[#b8923e]/15"
-                      style={{ background: "linear-gradient(135deg, #fef9ef, #faf3e0)" }}
-                    >
-                      <div className="flex gap-3 px-4 py-4">
-                        {/* Celebrity photo */}
-                        {analysis.celebrityImageUrl ? (
-                          <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0 border border-[#b8923e]/20 shadow-sm">
-                            <img
-                              src={analysis.celebrityImageUrl}
-                              alt={analysis.celebrityMatch}
-                              className="w-full h-full object-cover object-top"
-                            />
-                          </div>
-                        ) : (
-                          <div className="w-16 h-16 rounded-xl bg-[#f5ead6] shrink-0 flex items-center justify-center border border-[#b8923e]/20">
-                            <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-                              <circle cx="11" cy="8" r="4" stroke="#b8923e" strokeWidth="1.4"/>
-                              <path d="M3 20c0-4.4 3.6-8 8-8s8 3.6 8 8" stroke="#b8923e" strokeWidth="1.4" strokeLinecap="round"/>
-                            </svg>
+                  {/* Treatment preview picker */}
+                  {photo && (
+                    <div className="rounded-2xl border border-[#b8923e]/15 overflow-hidden">
+                      <div className="relative aspect-[4/3] bg-[#f0ece3]">
+                        <img
+                          src={previewUrl ?? photo}
+                          alt="Smile preview"
+                          className="w-full h-full object-contain"
+                        />
+                        {previewLoading && (
+                          <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                            <div className="flex flex-col items-center gap-2 text-white">
+                              <svg className="animate-spin" width="28" height="28" viewBox="0 0 28 28" fill="none">
+                                <circle cx="14" cy="14" r="11" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
+                                <path d="M14 3a11 11 0 0 1 11 11" stroke="white" strokeWidth="3" strokeLinecap="round" />
+                              </svg>
+                              <span className="text-xs">Generating AI preview...</span>
+                            </div>
                           </div>
                         )}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[10px] tracking-widest uppercase text-[#8c8479] mb-1">Your Smile Resembles</p>
-                          <p className="text-lg font-black shimmer-text leading-tight" style={{ letterSpacing: "-0.02em" }}>
-                            {analysis.celebrityMatch}
-                          </p>
-                          <p className="text-[#3d3831] text-xs leading-relaxed mt-1">{analysis.celebrityNote}</p>
+                        {previewUrl && !previewLoading && (
+                          <span className="absolute top-2 right-2 text-[10px] font-bold bg-black/60 text-white px-2 py-1 rounded-full">
+                            AI Preview
+                          </span>
+                        )}
+                      </div>
+                      <div className="p-4 flex flex-col gap-3">
+                        <p className="text-xs font-semibold text-[#1a1714]">What treatment interests you?</p>
+                        {previewError && <p className="text-red-500 text-xs">{previewError}</p>}
+                        <div className="flex flex-wrap gap-2">
+                          {TREATMENTS.map((t) => (
+                            <button
+                              key={t.key}
+                              onClick={() => pickTreatment(t.key)}
+                              disabled={previewLoading}
+                              className={`text-xs font-semibold rounded-full px-3.5 py-2 transition-all disabled:opacity-60 ${
+                                selectedTreatment === t.key
+                                  ? "bg-[#1a1714] text-white"
+                                  : "bg-[#f0ece3] text-[#3d3831] hover:bg-[#e8e0d4]"
+                              }`}
+                            >
+                              {t.label}
+                            </button>
+                          ))}
                         </div>
                       </div>
-                      <div className="px-4 py-2 bg-[#b8923e]/08 border-t border-[#b8923e]/10">
-                        <p className="text-[10px] text-[#8c8479]">
-                          ✨ AI-generated comparison based on smile characteristics only
-                        </p>
-                      </div>
-                    </motion.div>
+                    </div>
+                  )}
 
-                    {/* Disclaimer */}
-                    <p className="text-[11px] text-[#8c8479]/70 leading-relaxed italic">
-                      This is an AI-generated screening and not a medical diagnosis. A licensed dentist will personally review your smile before any clinical recommendations are made.
-                    </p>
+                  {/* Disclaimer */}
+                  <p className="text-[11px] text-[#8c8479]/70 leading-relaxed italic">
+                    This is an AI-generated screening and not a medical diagnosis. A licensed dentist will personally review your smile before any clinical recommendations are made.
+                  </p>
 
-                    {/* CTA */}
-                    <motion.button
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.7 }}
-                      onClick={proceed}
-                      className="gold-btn rounded-xl py-4 text-sm tracking-widest glow-gold"
-                    >
-                      Get My Professional Report →
-                    </motion.button>
-                  </div>
+                  {/* CTA */}
+                  <motion.button
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.4 }}
+                    onClick={proceed}
+                    className="gold-btn rounded-xl py-4 text-sm tracking-widest glow-gold"
+                  >
+                    Get My Professional Report →
+                  </motion.button>
                 </div>
               </div>
             </motion.div>

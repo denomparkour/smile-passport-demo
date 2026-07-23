@@ -5,9 +5,8 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 
 interface Analysis {
-  overallScore: number;
-  celebrityMatch: string;
-  categories: Record<string, { score: number; note: string }>;
+  smileScore: number;
+  issues: { issue: string; severity: string }[];
 }
 
 export default function ConfirmPage() {
@@ -48,9 +47,8 @@ export default function ConfirmPage() {
           photoBase64:    photo,
           photoTeeth:     photoTeeth ?? null,
           photoSide:      photoSide  ?? null,
-          smileScore:     analysis?.overallScore ?? null,
+          smileScore:     analysis?.smileScore ?? null,
           analysisJson:   analysis ?? null,
-          celebrityMatch: analysis?.celebrityMatch ?? null,
         }),
       });
       if (!res.ok) throw new Error("Failed");
@@ -65,7 +63,7 @@ export default function ConfirmPage() {
   };
 
   if (!photo || !analysis) return null;
-  if (submitted) return <SuccessScreen name={form.name} score={analysis.overallScore} onRestart={() => router.push("/")} />;
+  if (submitted) return <SuccessScreen name={form.name} score={analysis.smileScore} onRestart={() => router.push("/")} />;
 
   return (
     <main className="min-h-screen bg-[#faf8f4] flex flex-col">
@@ -104,13 +102,13 @@ export default function ConfirmPage() {
                       className="w-14 h-14 rounded-2xl flex items-center justify-center shrink-0"
                       style={{ background: "linear-gradient(135deg, #a07830, #d4a84b)" }}
                     >
-                      <span className="text-white font-black text-lg">{analysis.overallScore}</span>
+                      <span className="text-white font-black text-lg">{analysis.smileScore}</span>
                     </div>
                     <div>
                       <p className="font-black text-[#1a1714]" style={{ letterSpacing: "-0.01em" }}>
                         Smile Score
                       </p>
-                      <p className="text-[#8c8479] text-xs">Resembles {analysis.celebrityMatch}</p>
+                      <p className="text-[#8c8479] text-xs">Preliminary AI screening</p>
                     </div>
                   </div>
 

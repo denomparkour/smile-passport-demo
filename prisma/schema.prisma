@@ -17,7 +17,6 @@ model Lead {
   quoteShown     String   @default("")
   smileScore     Int?
   analysisJson   String?  @db.Text
-  celebrityMatch String?
   status         LeadStatus @default(PENDING)
   doctorNotes String?  @db.Text
   reviewedAt  DateTime?

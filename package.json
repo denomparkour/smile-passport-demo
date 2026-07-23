@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "db:push": "prisma migrate dev --name init",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "db:seed": "tsx prisma/seed.ts",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@mediapipe/camera_utils": "^0.3.1675466862",
@@ -21,14 +23,17 @@
     "@types/uuid": "^10.0.0",
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
+    "cloudinary": "^2.10.0",
     "clsx": "^2.1.1",
     "dotenv": "^17.4.2",
     "framer-motion": "^12.42.0",
+    "jose": "^6.2.4",
     "lucide-react": "^1.21.0",
     "next": "16.2.9",
     "next-auth": "^4.24.14",
     "nodemailer": "^7.0.13",
     "openai": "^6.45.0",
+    "pdfkit": "^0.19.1",
     "pg": "^8.22.0",
     "prisma": "^7.8.0",
     "react": "19.2.4",
@@ -40,11 +45,13 @@
     "@netlify/plugin-nextjs": "^5.15.12",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/pdfkit": "^0.17.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
     "tailwindcss": "^4",
+    "tsx": "^4.23.1",
     "typescript": "^5"
   }
 }
